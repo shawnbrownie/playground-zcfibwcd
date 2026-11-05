@@ -1,0 +1,19 @@
+[Unit]
+Description=pve-lab chat web UI (proxy to ai01 LLM)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/pve-lab-chat.env
+ExecStart=/usr/bin/python3 /opt/pve-lab-chat/server.py
+Restart=on-failure
+RestartSec=3
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+# Alternative to install.sh:
+#   cp pve-lab-chat.env.example .env   # edit BACKEND_URL etc.
+#   docker compose up -d
+services:
+  pve-lab-chat:
+    image: python:3.12-alpine
+    container_name: pve-lab-chat
+    restart: unless-stopped
+    working_dir: /app
+    command: ["python", "-u", "server.py"]
+    volumes:
+      - ./server.py:/app/server.py:ro
+      - ./static:/app/static:ro
+    env_file: .env
+    ports:
+      - "8080:8080"

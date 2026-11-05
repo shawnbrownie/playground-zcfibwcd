@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>pve-lab Chat</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --side: #eef0f3; --text: #1b1f24; --muted: #6a7380;
+    --border: #dde1e6; --accent: #2563eb; --accent-text: #fff; --user: #e7efff; --code: #f1f3f6;
+    --danger: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --panel: #161a20; --side: #12151a; --text: #e6e9ee; --muted: #8b95a3;
+      --border: #262c35; --accent: #4f8cff; --accent-text: #fff; --user: #1d2a44; --code: #1d222a;
+      --danger: #ff6b5b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; overflow: hidden;
+  }
+  button, select, textarea, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  /* sidebar */
+  #side {
+    width: 260px; flex: none; background: var(--side); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 12px; gap: 8px;
+  }
+  #side h1 { font-size: 15px; margin: 4px 4px 8px; display: flex; align-items: center; gap: 8px; }
+  #side h1 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  #side h1 .dot.ok { background: #22c55e; } #side h1 .dot.bad { background: var(--danger); }
+  .btn {
+    border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 8px 12px;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  #convs { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+  .conv {
+    display: flex; align-items: center; gap: 4px; padding: 7px 8px; border-radius: 8px;
+    cursor: pointer; color: var(--text); font-size: 14px;
+  }
+  .conv:hover { background: var(--border); }
+  .conv.active { background: var(--panel); box-shadow: 0 0 0 1px var(--border); }
+  .conv span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .conv button { border: 0; background: none; color: var(--muted); padding: 0 4px; visibility: hidden; }
+  .conv:hover button, .conv.active button { visibility: visible; }
+
+  /* main */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  header {
+    display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+    border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header select { border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 6px 8px; max-width: 55vw; }
+  header .grow { flex: 1; }
+  #menuBtn { display: none; }
+  #log { flex: 1; overflow-y: auto; padding: 24px 16px; }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  .msg { display: flex; margin: 0 0 18px; }
+  .msg.user { justify-content: flex-end; }
+  .bubble { max-width: 100%; overflow-wrap: anywhere; }
+  .msg.user .bubble { background: var(--user); padding: 8px 14px; border-radius: 16px; max-width: 85%; white-space: pre-wrap; }
+  .msg.assistant .bubble { width: 100%; }
+  .msg.error .bubble { color: var(--danger); }
+  .bubble p { margin: 0 0 .7em; } .bubble p:last-child { margin-bottom: 0; }
+  .bubble pre {
+    background: var(--code); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+    overflow-x: auto; position: relative; font-size: 13px; line-height: 1.5;
+  }
+  .bubble code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  .bubble :not(pre) > code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  .bubble pre .copy {
+    position: absolute; top: 6px; right: 6px; font-size: 12px; padding: 2px 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--panel); opacity: .8;
+  }
+  .bubble ul, .bubble ol { padding-left: 1.4em; margin: 0 0 .7em; }
+  .bubble h1, .bubble h2, .bubble h3, .bubble h4 { margin: .8em 0 .4em; line-height: 1.3; }
+  .bubble h1 { font-size: 1.3em; } .bubble h2 { font-size: 1.2em; } .bubble h3, .bubble h4 { font-size: 1.05em; }
+  .bubble blockquote { margin: 0 0 .7em; padding-left: 12px; border-left: 3px solid var(--border); color: var(--muted); }
+  .bubble table { border-collapse: collapse; margin: 0 0 .7em; display: block; overflow-x: auto; }
+  .bubble th, .bubble td { border: 1px solid var(--border); padding: 4px 8px; }
+  .bubble a { color: var(--accent); }
+  .cursor::after { content: "▍"; animation: blink 1s steps(1) infinite; color: var(--muted); }
+  @keyframes blink { 50% { opacity: 0; } }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  #empty { text-align: center; color: var(--muted); margin-top: 18vh; }
+  #empty h2 { color: var(--text); font-weight: 600; margin-bottom: 4px; }
+
+  /* composer */
+  #composer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--bg); }
+  #composer .box {
+    display: flex; align-items: flex-end; gap: 8px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 14px; padding: 8px 8px 8px 14px;
+  }
+  #input {
+    flex: 1; border: 0; outline: none; resize: none; background: transparent;
+    max-height: 40vh; min-height: 24px; padding: 4px 0;
+  }
+  #send { border-radius: 10px; padding: 6px 14px; }
+  .hint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 6px; }
+
+  /* dialog */
+  dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); width: min(520px, 92vw); padding: 20px; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  dialog textarea, dialog input { width: 100%; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 8px; }
+  dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+  @media (max-width: 760px) {
+    #side { position: fixed; inset: 0 auto 0 0; z-index: 10; transform: translateX(-100%); transition: transform .2s; box-shadow: 0 0 24px rgba(0,0,0,.3); }
+    body.side-open #side { transform: none; }
+    #menuBtn { display: inline-block; }
+    #log { padding: 16px 12px; }
+  }
+</style>
+</head>
+<body>
+<aside id="side">
+  <h1><span class="dot" id="status"></span><span id="title">pve-lab · ai01</span></h1>
+  <button class="btn primary" id="newBtn">＋ 新对话</button>
+  <div id="convs"></div>
+  <button class="btn" id="settingsBtn">⚙ 设置</button>
+</aside>
+
+<main id="main">
+  <header>
+    <button class="btn" id="menuBtn" aria-label="菜单">☰</button>
+    <select id="model" title="模型"></select>
+    <span class="grow"></span>
+    <button class="btn" id="refreshBtn" title="刷新模型列表">⟳</button>
+  </header>
+  <div id="log"><div class="wrap" id="msgs"></div></div>
+  <div id="composer">
+    <div class="wrap">
+      <div class="box">
+        <textarea id="input" rows="1" placeholder="问 ai01 点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
+        <button class="btn primary" id="send">发送</button>
+      </div>
+      <div class="hint">通过 Tailscale 连接到 pve-lab · 对话记录只保存在本浏览器</div>
+    </div>
+  </div>
+</main>
+
+<dialog id="settings">
+  <form method="dialog">
+    <h3 style="margin:0">设置</h3>
+    <label for="sysPrompt">System prompt（新对话生效）</label>
+    <textarea id="sysPrompt" rows="4"></textarea>
+    <label for="temp">Temperature（留空 = 模型默认）</label>
+    <input id="temp" type="number" min="0" max="2" step="0.1" placeholder="例如 0.7">
+    <label for="token" id="tokenLabel">访问口令 ACCESS_TOKEN（服务器未设置时留空）</label>
+    <input id="token" type="password" autocomplete="current-password">
+    <div class="row">
+      <button class="btn" value="cancel">取消</button>
+      <button class="btn primary" value="ok" id="saveSettings">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("pvechat." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("pvechat." + k, JSON.stringify(v)); } catch {} },
+  };
+
+  let cfg = { title: "pve-lab · ai01", defaultModel: "", systemPrompt: "", authRequired: false };
+  let convs = store.get("convs", []);          // [{id, title, model, system, messages:[{role,content}], updated}]
+  let currentId = store.get("current", null);
+  let settings = store.get("settings", { system: null, temperature: "", token: "" });
+  let controller = null;
+
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const current = () => convs.find((c) => c.id === currentId);
+  const save = () => { store.set("convs", convs); store.set("current", currentId); };
+  const authHeaders = () => settings.token ? { Authorization: "Bearer " + settings.token } : {};
+
+  // ---------------------------------------------------------------- markdown (escape first, then format)
+  const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  function inline(s) {
+    const codes = [];
+    s = s.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+    s = esc(s)
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+      .replace(/~~([^~]+)~~/g, "<del>$1</del>")
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return s.replace(/\u0000(\d+)\u0000/g, (_, i) => "<code>" + esc(codes[i]) + "</code>");
+  }
+  function markdown(src) {
+    const lines = src.replace(/\r\n?/g, "\n").split("\n");
+    let out = "", i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const fence = line.match(/^\s*```(\S*)/);
+      if (fence) {
+        const buf = []; i++;
+        while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) buf.push(lines[i++]);
+        i++;
+        out += '<pre><button class="copy" type="button">复制</button><code>' + esc(buf.join("\n")) + "</code></pre>";
+        continue;
+      }
+      let m;
+      if ((m = line.match(/^(#{1,4})\s+(.*)/))) { out += `<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`; i++; continue; }
+      if (/^\s*([-*_])\s*\1\s*\1[\s\1]*$/.test(line)) { out += "<hr>"; i++; continue; }
+      if (/^\s*>/.test(line)) {
+        const buf = [];
+        while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ""));
+        out += "<blockquote>" + markdown(buf.join("\n")) + "</blockquote>"; continue;
+      }
+      if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+        const row = (l) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => inline(c.trim()));
+        out += "<table><tr>" + row(line).map((c) => "<th>" + c + "</th>").join("") + "</tr>";
+        i += 2;
+        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) out += "<tr>" + row(lines[i++]).map((c) => "<td>" + c + "</td>").join("") + "</tr>";
+        out += "</table>"; continue;
+      }
+      if ((m = line.match(/^\s*([-*+]|\d+[.)])\s+/))) {
+        const ordered = /\d/.test(m[1]); const tag = ordered ? "ol" : "ul"; const items = [];
+        while (i < lines.length && (m = lines[i].match(/^\s*([-*+]|\d+[.)])\s+(.*)/)) && /\d/.test(m[1]) === ordered) { items.push(m[2]); i++; }
+        out += `<${tag}>` + items.map((t) => "<li>" + inline(t) + "</li>").join("") + `</${tag}>`; continue;
+      }
+      if (!line.trim()) { i++; continue; }
+      const buf = [];
+      while (i < lines.length && lines[i].trim() && !/^\s*(```|#{1,4}\s|>|[-*+]\s|\d+[.)]\s|\|)/.test(lines[i])) buf.push(lines[i++]);
+      if (!buf.length) buf.push(lines[i++]);
+      out += "<p>" + buf.map(inline).join("<br>") + "</p>";
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- rendering
+  function renderSidebar() {
+    const box = $("convs"); box.textContent = "";
+    [...convs].sort((a, b) => b.updated - a.updated).forEach((c) => {
+      const el = document.createElement("div");
+      el.className = "conv" + (c.id === currentId ? " active" : "");
+      const t = document.createElement("span"); t.textContent = c.title || "新对话";
+      const del = document.createElement("button"); del.textContent = "✕"; del.title = "删除";
+      del.onclick = (e) => { e.stopPropagation(); if (confirm("删除这个对话？")) deleteConv(c.id); };
+      el.append(t, del);
+      el.onclick = () => { selectConv(c.id); document.body.classList.remove("side-open"); };
+      box.append(el);
+    });
+  }
+
+  function msgEl(role, content) {
+    const row = document.createElement("div"); row.className = "msg " + role;
+    const b = document.createElement("div"); b.className = "bubble";
+    if (role === "assistant") b.innerHTML = markdown(content); else b.textContent = content;
+    row.append(b); return row;
+  }
+
+  function renderMessages() {
+    const box = $("msgs"); box.textContent = "";
+    const c = current();
+    const shown = c ? c.messages.filter((m) => m.role !== "system") : [];
+    if (!shown.length) {
+      box.innerHTML = `<div id="empty"><h2>${esc(cfg.title)}</h2><div>选择模型，然后开始提问</div></div>`;
+      return;
+    }
+    shown.forEach((m) => box.append(msgEl(m.role, m.content)));
+    scrollDown(true);
+  }
+
+  function scrollDown(force) {
+    const log = $("log");
+    if (force || log.scrollHeight - log.scrollTop - log.clientHeight < 120) log.scrollTop = log.scrollHeight;
+  }
+
+  // ---------------------------------------------------------------- conversations
+  function newConv() {
+    const c = { id: uid(), title: "", model: $("model").value, system: settings.system ?? cfg.systemPrompt, messages: [], updated: Date.now() };
+    convs.push(c); currentId = c.id; save(); renderSidebar(); renderMessages(); $("input").focus();
+    return c;
+  }
+  function selectConv(id) {
+    currentId = id; save();
+    const c = current();
+    if (c && c.model && [...$("model").options].some((o) => o.value === c.model)) $("model").value = c.model;
+    renderSidebar(); renderMessages();
+  }
+  function deleteConv(id) {
+    convs = convs.filter((c) => c.id !== id);
+    if (currentId === id) currentId = convs.length ? convs[convs.length - 1].id : null;
+    save(); renderSidebar(); renderMessages();
+  }
+
+  // ---------------------------------------------------------------- backend
+  async function loadModels() {
+    const sel = $("model"); const prev = sel.value || store.get("model", "") || cfg.defaultModel;
+    try {
+      const r = await fetch("api/models", { headers: authHeaders() });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      sel.textContent = "";
+      data.models.forEach((m) => sel.append(new Option(m, m)));
+      if (!data.models.length) sel.append(new Option("（ai01 上没有模型）", ""));
+      const pick = [prev, cfg.defaultModel].find((m) => m && data.models.includes(m)) || data.models[0] || "";
+      sel.value = pick;
+      $("status").className = "dot ok"; $("status").title = "ai01 在线";
+    } catch (e) {
+      sel.textContent = ""; sel.append(new Option("无法连接 ai01", ""));
+      $("status").className = "dot bad"; $("status").title = String(e.message || e);
+      if (/unauthorized/.test(e.message)) $("settings").showModal();
+    }
+  }
+
+  async function send() {
+    if (controller) { controller.abort(); return; }
+    const text = $("input").value.trim();
+    const model = $("model").value;
+    if (!text) return;
+    if (!model) { alert("没有可用的模型 —— 检查 ai01 是否在线"); return; }
+
+    const c = current() || newConv();
+    if (!c.messages.length) {
+      if (c.system) c.messages.push({ role: "system", content: c.system });
+      c.title = text.slice(0, 40);
+    }
+    c.messages.push({ role: "user", content: text });
+    c.model = model; c.updated = Date.now(); save(); renderSidebar();
+    $("input").value = ""; autosize();
+    if ($("empty")) $("msgs").textContent = "";
+    $("msgs").append(msgEl("user", text));
+
+    const row = msgEl("assistant", ""); const bubble = row.firstChild;
+    bubble.classList.add("cursor"); $("msgs").append(row); scrollDown(true);
+
+    let reply = "", errorText = "", lastPaint = 0;
+    const started = performance.now();
+    controller = new AbortController(); setBusy(true);
+    try {
+      const body = { model, messages: c.messages };
+      const t = parseFloat(settings.temperature); if (!isNaN(t)) body.temperature = t;
+      const r = await fetch("api/chat", {
+        method: "POST", signal: controller.signal,
+        headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || r.statusText); }
+      const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+          if (!line) continue;
+          const ev = JSON.parse(line);
+          if (ev.delta) reply += ev.delta;
+          if (ev.error) errorText = ev.error;
+        }
+        const now = performance.now();
+        if (now - lastPaint > 50) { bubble.innerHTML = markdown(reply); scrollDown(); lastPaint = now; }
+      }
+    } catch (e) {
+      if (e.name !== "AbortError") errorText = e.message || String(e);
+    } finally {
+      controller = null; setBusy(false); bubble.classList.remove("cursor");
+    }
+    bubble.innerHTML = markdown(reply || (errorText ? "" : "*（已停止）*"));
+    if (reply) {
+      c.messages.push({ role: "assistant", content: reply }); c.updated = Date.now(); save();
+      const meta = document.createElement("div"); meta.className = "meta";
+      meta.textContent = `${model} · ${((performance.now() - started) / 1000).toFixed(1)}s`;
+      bubble.append(meta);
+    }
+    if (errorText) $("msgs").append(msgEl("error", "⚠ " + errorText));
+    scrollDown(true);
+  }
+
+  function setBusy(b) { $("send").textContent = b ? "停止" : "发送"; }
+  function autosize() { const t = $("input"); t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }
+
+  // ---------------------------------------------------------------- events
+  $("send").onclick = send;
+  $("input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+  });
+  $("input").addEventListener("input", autosize);
+  $("newBtn").onclick = () => { newConv(); document.body.classList.remove("side-open"); };
+  $("menuBtn").onclick = () => document.body.classList.toggle("side-open");
+  $("main").addEventListener("click", (e) => { if (e.target.closest("#menuBtn")) return; document.body.classList.remove("side-open"); });
+  $("refreshBtn").onclick = loadModels;
+  $("model").onchange = () => { store.set("model", $("model").value); const c = current(); if (c) { c.model = $("model").value; save(); } };
+  $("msgs").addEventListener("click", (e) => {
+    const btn = e.target.closest(".copy"); if (!btn) return;
+    navigator.clipboard.writeText(btn.nextSibling.textContent).then(() => {
+      btn.textContent = "已复制"; setTimeout(() => (btn.textContent = "复制"), 1200);
+    });
+  });
+  $("settingsBtn").onclick = () => {
+    $("sysPrompt").value = settings.system ?? cfg.systemPrompt;
+    $("temp").value = settings.temperature; $("token").value = settings.token;
+    $("settings").showModal();
+  };
+  $("saveSettings").onclick = () => {
+    settings = { system: $("sysPrompt").value, temperature: $("temp").value, token: $("token").value };
+    store.set("settings", settings); loadModels();
+  };
+
+  // ---------------------------------------------------------------- boot
+  (async () => {
+    try { cfg = { ...cfg, ...(await (await fetch("api/config")).json()) }; } catch {}
+    document.title = cfg.title; $("title").textContent = cfg.title;
+    $("tokenLabel").style.display = $("token").style.display = cfg.authRequired ? "" : "none";
+    if (cfg.authRequired && !settings.token) $("settings").showModal();
+    await loadModels();
+    if (current()) selectConv(currentId); else { renderSidebar(); renderMessages(); }
+    $("input").focus();
+  })();
+})();
+</script>
+</body>
+</html>
