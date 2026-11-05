@@ -41,6 +41,7 @@ class FakeBackend(BaseHTTPRequestHandler):
                               "application/x-ndjson")
         if self.path == "/v1/chat/completions":
             lines = ['data: {"choices":[{"delta":{"role":"assistant"}}]}',
+                     'data: {"choices":[{"delta":{"reasoning_content":"thinking..."}}]}',
                      'data: {"choices":[{"delta":{"content":"Hello"}}]}',
                      'data: {"choices":[{"delta":{"content":" there"}}]}',
                      "data: [DONE]"]
@@ -115,7 +116,20 @@ class ChatServerTest(unittest.TestCase):
         self.assertEqual(json.loads(body)["models"], ["my-vllm-model"])
         events = self.chat({"model": "my-vllm-model", "messages": [{"role": "user", "content": "hi"}]})
         self.assertEqual("".join(e.get("delta", "") for e in events), "Hello there")
+        self.assertEqual([e["reasoning"] for e in events if "reasoning" in e], ["thinking..."])
         self.assertEqual(events[-1], {"done": True})
+
+    def test_busy_returns_429(self):
+        held = []
+        while server._slots.acquire(blocking=False):
+            held.append(1)
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as cm:
+                self.chat({"model": "x", "messages": [{"role": "user", "content": "hi"}]})
+            self.assertEqual(cm.exception.code, 429)
+        finally:
+            for _ in held:
+                server._slots.release()
 
     def test_backend_down_reports_error(self):
         server.CONFIG["backend_url"] = "http://127.0.0.1:1"

@@ -1,6 +1,6 @@
 [Unit]
 Description=pve-lab chat web UI (proxy to ai01 LLM)
-After=network-online.target tailscaled.service
+After=network-online.target tailscaled.service local-fast.service
 Wants=network-online.target
 
 [Service]

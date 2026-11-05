@@ -88,6 +88,9 @@
   .bubble a { color: var(--accent); }
   .cursor::after { content: "▍"; animation: blink 1s steps(1) infinite; color: var(--muted); }
   @keyframes blink { 50% { opacity: 0; } }
+  .think { margin: 0 0 10px; font-size: 13px; color: var(--muted); border-left: 3px solid var(--border); padding: 2px 0 2px 10px; }
+  .think summary { cursor: pointer; user-select: none; }
+  .think .body { white-space: pre-wrap; margin-top: 4px; max-height: 40vh; overflow-y: auto; }
   .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
   #empty { text-align: center; color: var(--muted); margin-top: 18vh; }
   #empty h2 { color: var(--text); font-weight: 600; margin-bottom: 4px; }
@@ -237,6 +240,28 @@
     return out;
   }
 
+  // Split "<think>...</think>answer" (models that inline their reasoning) from the answer.
+  function splitThink(text) {
+    const m = text.match(/^\s*<think>([\s\S]*?)(<\/think>|$)/);
+    if (!m) return { thought: "", answer: text };
+    return { thought: m[1], answer: m[2] ? text.slice(m[0].length) : "" };
+  }
+  function paintAssistant(bubble, text, extraThought, streaming) {
+    const { thought, answer } = splitThink(text);
+    const allThought = (extraThought || "") + thought;
+    const open = bubble.querySelector(".think")?.open ?? false;
+    bubble.innerHTML = "";
+    if (allThought.trim()) {
+      const d = document.createElement("details"); d.className = "think"; d.open = open;
+      const s = document.createElement("summary");
+      s.textContent = streaming && !answer ? "💭 思考中…" : "💭 思考过程";
+      const b = document.createElement("div"); b.className = "body"; b.textContent = allThought.trim();
+      d.append(s, b); bubble.append(d);
+    }
+    const div = document.createElement("div"); div.innerHTML = markdown(answer); bubble.append(div);
+    return answer;
+  }
+
   // ---------------------------------------------------------------- rendering
   function renderSidebar() {
     const box = $("convs"); box.textContent = "";
@@ -255,7 +280,7 @@
   function msgEl(role, content) {
     const row = document.createElement("div"); row.className = "msg " + role;
     const b = document.createElement("div"); b.className = "bubble";
-    if (role === "assistant") b.innerHTML = markdown(content); else b.textContent = content;
+    if (role === "assistant") paintAssistant(b, content, "", false); else b.textContent = content;
     row.append(b); return row;
   }
 
@@ -335,7 +360,7 @@
     const row = msgEl("assistant", ""); const bubble = row.firstChild;
     bubble.classList.add("cursor"); $("msgs").append(row); scrollDown(true);
 
-    let reply = "", errorText = "", lastPaint = 0;
+    let reply = "", thinking = "", errorText = "", lastPaint = 0;
     const started = performance.now();
     controller = new AbortController(); setBusy(true);
     try {
@@ -357,19 +382,22 @@
           if (!line) continue;
           const ev = JSON.parse(line);
           if (ev.delta) reply += ev.delta;
+          if (ev.reasoning) thinking += ev.reasoning;
           if (ev.error) errorText = ev.error;
         }
         const now = performance.now();
-        if (now - lastPaint > 50) { bubble.innerHTML = markdown(reply); scrollDown(); lastPaint = now; }
+        if (now - lastPaint > 50) { paintAssistant(bubble, reply, thinking, true); scrollDown(); lastPaint = now; }
       }
     } catch (e) {
       if (e.name !== "AbortError") errorText = e.message || String(e);
     } finally {
       controller = null; setBusy(false); bubble.classList.remove("cursor");
     }
-    bubble.innerHTML = markdown(reply || (errorText ? "" : "*（已停止）*"));
-    if (reply) {
-      c.messages.push({ role: "assistant", content: reply }); c.updated = Date.now(); save();
+    const answer = paintAssistant(bubble, reply, thinking, false);
+    if (!answer.trim() && !errorText) bubble.append(Object.assign(document.createElement("em"), { textContent: "（已停止）" }));
+    if (answer.trim()) {
+      // Store only the answer: re-sending old reasoning wastes context on a 12 GB GPU.
+      c.messages.push({ role: "assistant", content: answer.trim() }); c.updated = Date.now(); save();
       const meta = document.createElement("div"); meta.className = "meta";
       meta.textContent = `${model} · ${((performance.now() - started) / 1000).toFixed(1)}s`;
       bubble.append(meta);

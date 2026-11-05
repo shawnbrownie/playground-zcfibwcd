@@ -16,7 +16,7 @@ install -m 0644 "$SRC/pve-lab-chat.service" /etc/systemd/system/pve-lab-chat.ser
 
 if [[ ! -f /etc/pve-lab-chat.env ]]; then
   install -m 0640 "$SRC/pve-lab-chat.env.example" /etc/pve-lab-chat.env
-  echo "Created /etc/pve-lab-chat.env -- check BACKEND_URL points at ai01."
+  echo "Created /etc/pve-lab-chat.env -- check BACKEND_URL and set ACCESS_TOKEN."
 fi
 
 systemctl daemon-reload
@@ -26,8 +26,6 @@ sleep 1
 systemctl --no-pager --lines=5 status pve-lab-chat || true
 
 PORT=$(grep -E '^PORT=' /etc/pve-lab-chat.env | cut -d= -f2); PORT=${PORT:-8080}
-if command -v tailscale >/dev/null; then
-  TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || true)
-  [[ -n "$TS_IP" ]] && echo "Open from any Tailscale device: http://$TS_IP:$PORT"
-fi
-echo "Local: http://$(hostname -I | awk '{print $1}'):$PORT"
+echo "Health: curl -s http://127.0.0.1:$PORT/healthz ; models: curl -s http://127.0.0.1:$PORT/api/models"
+echo "Publish privately on the tailnet (HTTPS):  sudo tailscale serve --bg $PORT"
+echo "Never use 'tailscale funnel' for this service."

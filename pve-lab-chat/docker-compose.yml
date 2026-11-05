@@ -12,5 +12,5 @@ services:
       - ./server.py:/app/server.py:ro
       - ./static:/app/static:ro
     env_file: .env
-    ports:
-      - "8080:8080"
+    # host networking so the container can reach a model server bound to 127.0.0.1
+    network_mode: host
